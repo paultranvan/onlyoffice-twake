@@ -2,10 +2,16 @@ name: Publish version to Harbor
 
 on:
   workflow_call:
+    outputs:
+      version:
+        description: 'The version published, extracted from the tag'
+        value: ${{ jobs.publish.outputs.version }}
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
       - name: Extract version

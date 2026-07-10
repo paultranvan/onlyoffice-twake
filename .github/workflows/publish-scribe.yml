@@ -1,0 +1,86 @@
+name: Publish Scribe overlay to Harbor
+
+# The analytics-free base is published by push.yml / release.yml. This publishes
+# the Scribe overlay layered on top of it, which until now was the one image
+# nobody could produce without a personal Harbor account.
+#
+# Called by release.yml once the base for that version is on Harbor, so a single
+# tag publishes both images. Also dispatchable on its own, to rebuild the overlay
+# on an arbitrary label without cutting a release.
+#
+# BASE_IMAGE is pulled from Harbor rather than built here: the overlay's multi-arch
+# build reads its base from a registry, not from the local image store.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Released version: publishes <version>-scribe onto <version>'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Tag to publish, e.g. 9.4.0-noanalytics-scribe-2026-07-09.1'
+        required: true
+        type: string
+      base_tag:
+        description: 'Tag of onlyoffice-noanalytics to layer onto'
+        required: false
+        default: latest
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build and push Scribe overlay
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # A release derives both tags from the version it just published. A manual
+      # dispatch names them, so the overlay can be rebuilt on a free-form label.
+      - name: Resolve tags
+        id: tags
+        env:
+          VERSION: ${{ inputs.version }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          BASE_TAG: ${{ inputs.base_tag }}
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            echo "image=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+            echo "base=${BASE_TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=${VERSION}-scribe" >> "$GITHUB_OUTPUT"
+            echo "base=${VERSION}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The overlay Dockerfile runs a version guard once per architecture, so the
+      # arm64 leg needs emulation. The base image's Dockerfile is COPY-only and
+      # does not, which is why the other publish workflows have no QEMU step.
+      - name: Set up QEMU (arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Harbor
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.HARBOR_REGISTRY }}
+          username: ${{ secrets.HARBOR_USER }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
+      # build-scribe.sh compiles sdk-all.js from the pinned sdkjs source, assembles
+      # the plugin, and hands off to dist/push-multiarch.sh for the chunked push
+      # that Harbor's proxy requires.
+      - name: Build and push Scribe overlay (multi-arch, chunked)
+        env:
+          IMAGE: ${{ secrets.HARBOR_REGISTRY }}/${{ secrets.HARBOR_PROJECT }}/onlyoffice:${{ steps.tags.outputs.image }}
+          BASE_IMAGE: ${{ secrets.HARBOR_REGISTRY }}/${{ secrets.HARBOR_PROJECT }}/onlyoffice-noanalytics:${{ steps.tags.outputs.base }}
+        run: ./scribe/build-scribe.sh

@@ -11,9 +11,19 @@ jobs:
     uses: ./.github/workflows/publish-version.yml
     secrets: inherit
 
+  # Layered on the base the job above just pushed, so it must wait for it.
+  scribe:
+    name: Publish Scribe overlay
+    needs: [publish]
+    uses: ./.github/workflows/publish-scribe.yml
+    with:
+      version: ${{ needs.publish.outputs.version }}
+    secrets: inherit
+
   release:
     name: Create GitHub release
-    needs: [publish]
+    # Only cut a release once both images of the family are on Harbor.
+    needs: [publish, scribe]
     runs-on: ubuntu-latest
     permissions:
       contents: write
