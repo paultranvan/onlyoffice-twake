@@ -41,23 +41,29 @@ The 5 main desktop editors, where the GA module (`UA-12442749-13`) and
 bundles). The mobile and embed editors keep stock 9.4.0 behaviour; their analytics
 path was already inert (the embed `Common.Analytics` object is never defined).
 
-## Building
+## Publishing
 
-### Analytics-free image
+CI holds the Harbor credentials and pushes every image. A release tag publishes the
+analytics-free base and then the Scribe overlay on top of it:
+
+```bash
+git tag v9.4.0.1 && git push origin v9.4.0.1   # -> onlyoffice-noanalytics:9.4.0.1
+                                               # -> onlyoffice:9.4.0.1-scribe
+```
+
+Merging to `main` republishes `onlyoffice-noanalytics:latest`. The Scribe overlay can
+also be rebuilt on its own from the Actions tab.
+
+## Building locally
+
+To debug a build. These produce local images; publishing goes through CI.
 
 ```bash
 ./build-webapps.sh                       # rebuild GA-free editor bundles -> dist/apps/
-docker login harbor.linagora.com
-IMAGE=harbor.linagora.com/twake-workplace/onlyoffice-noanalytics:9.4.0-noanalytics \
-  dist/push-multiarch.sh
-```
 
-### Scribe variants
-
-```bash
 docker run --privileged --rm tonistiigi/binfmt --install arm64   # arm64 emulation, once
 
-IMAGE=harbor.linagora.com/twake-workplace/onlyoffice:9.4.0.1-scribe-2026-06-29.14 \
+IMAGE=onlyoffice:local-scribe \
 BASE_IMAGE=onlyoffice/documentserver:9.4.0.1 \
   scribe/build-scribe.sh
 ```
@@ -65,7 +71,9 @@ BASE_IMAGE=onlyoffice/documentserver:9.4.0.1 \
 See **[`scribe/README.md`](scribe/README.md)** for both variants and options, and
 **[`dist/README.md`](dist/README.md)** for the multi-arch push engine, including how
 it survives Harbor resetting large blob uploads (build per arch, push with
-retry-until-converge, then stitch into one manifest).
+retry-until-converge, then stitch into one manifest). For a full from-scratch
+runbook of the analytics-free + Scribe variant, see
+**[`docs/build-noanalytics-scribe.md`](docs/build-noanalytics-scribe.md)**.
 
 ### Local single-arch
 

@@ -1,0 +1,46 @@
+# Build the patched Word sdk-all.js from a sdkjs source tree.
+#
+# Vendored here (rather than living in the sdkjs repo) so build-scribe.sh can point
+# SDKJS_REPO/SDKJS_REF at any compatible sdkjs source — e.g. Benibur/sdkjs — without
+# that repo needing to carry its own Dockerfile. Default source:
+# Benibur/sdkjs@integration/scribe-oo-9.4.0.129.
+#
+# build/build.py is a pure-Python concatenation (no closure compiler, no npm/grunt,
+# so no JRE/node needed). It also merges the sdkjs-forms addon (ONLYOFFICE/sdkjs-forms),
+# which supplies the Word forms API (AscOForm.*). The addon MUST be passed as an
+# ABSOLUTE path: build.py silently ignores a relative --addon that doesn't resolve
+# from ROOT_DIR/.., producing a forms-less bundle (AscOForm drops from ~69 to 3, and
+# the file shrinks by ~0.17MB) with no error. We clone it to /sdkjs-forms and pass
+# the absolute path.
+#
+# Output at deploy/sdkjs/word/sdk-all.js carries:
+#   - ApiRun.GetInlineDrawings, Api.GetSelectionScreenRect  (Scribe patch)
+#   - the Word forms API (AscOForm.*)                       (sdkjs-forms addon)
+FROM python:3-slim
+
+# git fetches the forms addon at build time.
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# sdkjs-forms addon, version-locked to the same OO build (tags v9.4.0.120..129 all
+# point at commit 1a88328). Must contain configs/word.json + the oform/ tree.
+ARG FORMS_REPO=https://github.com/ONLYOFFICE/sdkjs-forms.git
+ARG FORMS_REF=v9.4.0.129
+RUN git clone --depth 1 --branch "$FORMS_REF" "$FORMS_REPO" /sdkjs-forms \
+    && test -f /sdkjs-forms/configs/word.json \
+    || { echo "ERROR: forms addon missing configs/word.json — wrong FORMS_REPO/FORMS_REF?" >&2; exit 1; }
+
+WORKDIR /sdkjs
+COPY . .
+
+# PRODUCT_VERSION/BUILD_NUMBER only stamp the license header; default is fine.
+ARG PRODUCT_VERSION=9.4.0
+ARG BUILD_NUMBER=129
+# --addon MUST be absolute (see header). Then assert the forms API actually merged:
+# a forms-less build (silent-ignore failure mode) leaves AscOForm at 3, not ~69.
+RUN PRODUCT_VERSION="$PRODUCT_VERSION" BUILD_NUMBER="$BUILD_NUMBER" \
+      python3 build/build.py --product word --addon /sdkjs-forms \
+    && n="$(grep -c AscOForm deploy/sdkjs/word/sdk-all.js)" \
+    && echo "AscOForm occurrences: $n (expected ~69)" \
+    && [ "$n" -ge 60 ] \
+    || { echo "ERROR: sdkjs-forms not merged (AscOForm too low) — is --addon absolute?" >&2; exit 1; }
