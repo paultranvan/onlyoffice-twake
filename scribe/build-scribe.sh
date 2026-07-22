@@ -18,20 +18,25 @@
 #   IMAGE=<repo:tag> BASE_IMAGE=<oo-image> ./scribe/build-scribe.sh
 #
 # Overridable via env: SCRIBE_REF/SCRIBE_REPO (plugin git tag/repo),
-# SDKJS_REF/SDKJS_REPO (patched sdkjs source branch/repo), EXPECT_OO_VERSION.
+# SDKJS_REF/SDKJS_REPO (patched sdkjs source tag/repo), FORMS_REF/FORMS_REPO
+# (sdkjs-forms addon), EXPECT_OO_VERSION.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-IMAGE="${IMAGE:?Set IMAGE, e.g. harbor.example.com/twake-workplace/onlyoffice:9.4.0.1-scribe-2026-07-09.1}"
+IMAGE="${IMAGE:?Set IMAGE, e.g. harbor.example.com/twake-workplace/onlyoffice:9.4.0.1-scribe-2026-07-22.3}"
 BASE_IMAGE="${BASE_IMAGE:?Set BASE_IMAGE, e.g. onlyoffice/documentserver:9.4.0.1}"
 
 SCRIBE_REPO="${SCRIBE_REPO:-https://github.com/Benibur/cozy-drive.git}"
-SCRIBE_REF="${SCRIBE_REF:-scribe-2026-07-09.1}"       # plugin git tag (== SCRIBE_BUILD)
+SCRIBE_REF="${SCRIBE_REF:-scribe-2026-07-22.3}"       # plugin git tag (== SCRIBE_BUILD)
 # Patched sdkjs source. sdk-all.js is compiled from it (via scribe/sdkjs.Dockerfile.build),
 # not fetched prebuilt. Any compatible sdkjs source tree works, so no Dockerfile is
 # required in the source repo.
 SDKJS_REPO="${SDKJS_REPO:-https://github.com/Benibur/sdkjs.git}"
-SDKJS_REF="${SDKJS_REF:-integration/scribe-oo-9.4.0.129}"   # sdkjs source branch
+SDKJS_REF="${SDKJS_REF:-scribe-sdkjs-2026-07-21.1}"   # sdkjs source tag (a branch works too)
+# sdkjs-forms addon, consumed by sdkjs.Dockerfile.build. Overridable here so it can
+# follow the OnlyOffice build without editing the Dockerfile.
+FORMS_REPO="${FORMS_REPO:-https://github.com/ONLYOFFICE/sdkjs-forms.git}"
+FORMS_REF="${FORMS_REF:-v9.4.0.129}"
 export EXPECT_OO_VERSION="${EXPECT_OO_VERSION:-9.4.0-129}"
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
@@ -45,9 +50,10 @@ CTX="$WORK/ctx"; mkdir -p "$CTX"
 #    The bundle is plain JS (architecture-independent), so one build feeds both
 #    arches downstream.
 git clone --depth 1 --branch "$SDKJS_REF" "$SDKJS_REPO" "$WORK/sdkjs" >/dev/null 2>&1 \
-  || { echo "clone of $SDKJS_REPO#$SDKJS_REF failed — is the branch pushed?" >&2; exit 1; }
+  || { echo "clone of $SDKJS_REPO#$SDKJS_REF failed — is the ref pushed?" >&2; exit 1; }
 SDKJS_TAG="scribe-sdkjs-build:$(printf '%s' "$SDKJS_REF" | tr -c 'A-Za-z0-9._-' '-')"
-docker build -f "$HERE/sdkjs.Dockerfile.build" -t "$SDKJS_TAG" "$WORK/sdkjs"
+docker build -f "$HERE/sdkjs.Dockerfile.build" -t "$SDKJS_TAG" \
+  --build-arg "FORMS_REPO=$FORMS_REPO" --build-arg "FORMS_REF=$FORMS_REF" "$WORK/sdkjs"
 trap 'rm -rf "$WORK"; [ -n "${cid:-}" ] && docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
 cid="$(docker create "$SDKJS_TAG")"
 docker cp "$cid:/sdkjs/deploy/sdkjs/word/sdk-all.js" "$CTX/sdk-all.js"
@@ -58,7 +64,10 @@ grep -q GetSelectionScreenRect "$CTX/sdk-all.js" || { echo "sdk-all.js missing t
 # resolution failure leaves AscOForm at 3 instead of ~69, with no build error.
 forms_n="$(grep -c AscOForm "$CTX/sdk-all.js" || true)"
 [ "${forms_n:-0}" -ge 60 ] || { echo "sdk-all.js missing the sdkjs-forms addon (AscOForm=${forms_n}, expected ~69)" >&2; exit 1; }
-echo "sdk-all.js OK ($(wc -c <"$CTX/sdk-all.js") bytes; patches + forms present, AscOForm=${forms_n})"
+echo "sdk-all.js OK ($(wc -c <"$CTX/sdk-all.js") bytes; patches + forms present, AscOForm=${forms_n}, forms=${FORMS_REF})"
+# Printed so a build can be compared against a reference bundle (the build is
+# reproducible: same SDKJS_REF + FORMS_REF -> same bytes).
+echo "sdk-all.js sha256 $(sha256sum "$CTX/sdk-all.js" | cut -d' ' -f1)"
 
 # 2. Scribe plugin at the pinned ref -> $CTX/scribe (drop stale pre-gzipped assets).
 git clone --depth 1 --branch "$SCRIBE_REF" --filter=blob:none --sparse "$SCRIBE_REPO" "$WORK/repo" >/dev/null 2>&1
