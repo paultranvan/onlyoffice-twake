@@ -4,14 +4,14 @@ Layers the Scribe editor addon onto an OnlyOffice base image:
 
 - a patched sdkjs word bundle (`sdk-all.js` with `ApiRun.GetInlineDrawings` and
   `Api.GetSelectionScreenRect`, and the Word forms API `AscOForm.*`), compiled from
-  [Benibur/sdkjs](https://github.com/Benibur/sdkjs) (branch
-  `integration/scribe-oo-9.4.0.129`) plus the
+  [Benibur/sdkjs](https://github.com/Benibur/sdkjs) (tag
+  `scribe-sdkjs-2026-07-21.1`) plus the
   [ONLYOFFICE/sdkjs-forms](https://github.com/ONLYOFFICE/sdkjs-forms) addon
   (`v9.4.0.129`), and
 - the Scribe plugin (`sdkjs-plugins/scribe`), from
   [Benibur/cozy-drive](https://github.com/Benibur/cozy-drive).
 
-`build-scribe.sh` clones the sdkjs source branch, builds `sdk-all.js` from it (via
+`build-scribe.sh` clones the sdkjs source ref, builds `sdk-all.js` from it (via
 the vendored `sdkjs.Dockerfile.build`, a pure-Python `build/build.py` run — no
 npm/JRE — that also merges the `sdkjs-forms` addon), assembles the overlay context
 with the plugin, and hands off to [`../dist/push-multiarch.sh`](../dist/) to build
@@ -61,10 +61,12 @@ Environment:
 |-----|---------|---------|
 | `IMAGE` | (required) | target `repo:tag` |
 | `BASE_IMAGE` | (required) | foundation image (build `9.4.0-129`) |
-| `SCRIBE_REF` | `scribe-2026-07-09.1` | plugin git tag (equals its `SCRIBE_BUILD`) |
+| `SCRIBE_REF` | `scribe-2026-07-22.3` | plugin git tag (equals its `SCRIBE_BUILD`) |
 | `SCRIBE_REPO` | `Benibur/cozy-drive` | plugin source repo |
-| `SDKJS_REF` | `integration/scribe-oo-9.4.0.129` | patched sdkjs source branch |
+| `SDKJS_REF` | `scribe-sdkjs-2026-07-21.1` | patched sdkjs source tag |
 | `SDKJS_REPO` | `Benibur/sdkjs` | repo holding the patched sdkjs source |
+| `FORMS_REF` | `v9.4.0.129` | `sdkjs-forms` addon tag (must match the OO build) |
+| `FORMS_REPO` | `ONLYOFFICE/sdkjs-forms` | forms addon source repo |
 | `EXPECT_OO_VERSION` | `9.4.0-129` | version-guard value |
 
 `build-scribe.sh` verifies both patched methods are present in `sdk-all.js` before baking and

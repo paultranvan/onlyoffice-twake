@@ -30,15 +30,16 @@ git tag v9.4.0.1 && git push origin v9.4.0.1
 
 **Or rebuild just the overlay.** The *Publish Scribe overlay to Harbor* workflow is
 dispatchable from the Actions tab. Give it the tag to publish (a date-stamped label
-such as `9.4.0-noanalytics-scribe-2026-07-09.1`) and the base tag to layer onto
+such as `9.4.0-noanalytics-scribe-2026-07-22.3`) and the base tag to layer onto
 (defaults to `latest`, which `main` republishes on every merge). Use this when the
 overlay sources have moved but the base has not.
 
-> **Reproducibility caveat.** `SDKJS_REF` defaults to a *branch*
-> (`integration/scribe-oo-9.4.0.129`), not a tag, so two builds of the same git tag
-> can produce different images. Until it is pinned to a tag or a commit, the
-> date-stamped dispatch label is what actually distinguishes one overlay build from
-> another.
+> **Reproducibility.** Both overlay sources are now pinned to immutable tags
+> (`SDKJS_REF=scribe-sdkjs-2026-07-21.1`, `SCRIBE_REF=scribe-2026-07-22.3`), and
+> `build.py` is a deterministic concatenation, so rebuilding the same refs yields a
+> byte-identical `sdk-all.js` — `build-scribe.sh` prints its sha256 for comparison.
+> Keep it that way: a branch in `SDKJS_REF` would make two builds of the same
+> release tag differ.
 
 ## Building locally (debugging only)
 
