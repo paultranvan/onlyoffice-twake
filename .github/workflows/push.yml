@@ -16,3 +16,13 @@ jobs:
     name: Publish latest
     uses: ./.github/workflows/publish-latest.yml
     secrets: inherit
+
+  # Layered on the base the job above just pushed, so it must wait for it.
+  scribe:
+    name: Refresh Scribe overlay
+    needs: [publish]
+    uses: ./.github/workflows/publish-scribe.yml
+    with:
+      image_tag: latest
+      base_tag: latest
+    secrets: inherit

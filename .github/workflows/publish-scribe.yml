@@ -15,8 +15,17 @@ on:
   workflow_call:
     inputs:
       version:
-        description: 'Released version: publishes <version>-scribe onto <version>'
-        required: true
+        description: 'Released version: publishes <version>-scribe onto <version>. Leave empty to use image_tag/base_tag.'
+        required: false
+        type: string
+      image_tag:
+        description: 'Overlay tag to publish when version is empty, e.g. latest'
+        required: false
+        type: string
+      base_tag:
+        description: 'onlyoffice-noanalytics tag to layer onto when version is empty'
+        required: false
+        default: latest
         type: string
   workflow_dispatch:
     inputs:
@@ -41,8 +50,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # A release derives both tags from the version it just published. A manual
-      # dispatch names them, so the overlay can be rebuilt on a free-form label.
+      # A release derives both tags from the version it just published. A push to
+      # main and a manual dispatch instead name them directly, so the overlay can
+      # ride latest or a free-form label. Presence of a version selects the mode.
       - name: Resolve tags
         id: tags
         env:
@@ -50,12 +60,12 @@ jobs:
           IMAGE_TAG: ${{ inputs.image_tag }}
           BASE_TAG: ${{ inputs.base_tag }}
         run: |
-          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
-            echo "image=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
-            echo "base=${BASE_TAG}" >> "$GITHUB_OUTPUT"
-          else
+          if [ -n "${VERSION}" ]; then
             echo "image=${VERSION}-scribe" >> "$GITHUB_OUTPUT"
             echo "base=${VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+            echo "base=${BASE_TAG}" >> "$GITHUB_OUTPUT"
           fi
 
       # The overlay Dockerfile runs a version guard once per architecture, so the
