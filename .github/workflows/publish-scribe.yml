@@ -39,8 +39,12 @@ on:
         default: latest
         type: string
 
+# A fixed prefix, not github.workflow: when this is called from another workflow,
+# github.workflow is the caller's name, so the old group aliased the caller's own
+# group and the call deadlocked. This keeps Scribe builds serialized per ref while
+# staying distinct from any caller.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: publish-scribe-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
