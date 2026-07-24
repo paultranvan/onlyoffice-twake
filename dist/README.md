@@ -43,10 +43,41 @@ Environment:
 | `PLATFORMS` | platforms to build (default `linux/amd64,linux/arm64`) |
 | `BLOB_CHUNK` | chunk size in bytes (default `16000000`) |
 
+## HTTP access logs & observability
+
+By default the DS image sets `access_log off`, and even when enabled it writes to
+`/var/log/nginx/` — a path the entrypoint does **not** `tail`, so nginx access logs
+never reach the container stdout (nor Loki/Grafana in k8s). The node service logs
+already reach stdout (log4js `console` appender → supervisord → the entrypoint's
+`tail -F` of `/var/log/onlyoffice/documentserver/*.log`).
+
+This overlay closes the gap:
+
+- bakes `NGINX_ACCESS_LOG=true`, which makes the entrypoint write the access log
+  under `/var/log/onlyoffice/documentserver/` (the tailed dir → stdout);
+- installs a `ds_timing` log format (`dist/ds-logformat.conf`) carrying
+  `rt=$request_time` and `urt=$upstream_response_time`, so latency can be split
+  between the client/network (`rt` high, `urt` low/`-`) and the node backend
+  (`urt` high).
+
+Sample line:
+
+```
+10.0.0.1 docs.example.com 200 "GET /web-apps/apps/api/documents/api.js HTTP/1.1" rt=0.003 urt=- cache=- len=65363 ref="-" ua="Mozilla/5.0 ..."
+```
+
+Notes:
+- The `tail` (and thus stdout access logs) starts only after font/theme generation
+  at boot — expect a ~1–2 min delay on a cold start before HTTP lines appear.
+- Access logs contain client IPs and full request paths — keep that in mind for
+  retention/PII. Set `NGINX_ACCESS_LOG=false` at runtime to turn them back off
+  (the `ds_timing` format stays defined but unused).
+
 ## arm64 emulation
 
-Not needed for the analytics-free overlay (COPY-only, arch-independent). It **is**
-needed when the Dockerfile has a per-arch `RUN` (the Scribe version guard does):
+Now **required** for the multi-arch build: the access-log overlay adds a per-arch
+`RUN` (nginx/entrypoint patch), so it is no longer COPY-only. Same requirement as
+the Scribe version guard:
 
 ```bash
 docker run --privileged --rm tonistiigi/binfmt --install arm64
