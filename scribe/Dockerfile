@@ -2,10 +2,10 @@
 #
 # Layers two artifacts onto a base OnlyOffice image (build 9.4.0-129):
 #   • a patched sdkjs word bundle (sdk-all.js with ApiRun.GetInlineDrawings)
-#   • the Scribe plugin (sdkjs-plugins/scribe)
+#   • the Twake Scribe plugin of Twake Drive (sdkjs-plugins/twake-scribe)
 #
-# The build context (sdk-all.js + cache-bust-stamped scribe/) is assembled by
-# build-scribe.sh. BASE_IMAGE selects the foundation: point it at stock
+# The build context (sdk-all.js + twake-scribe/) is assembled by build-scribe.sh.
+# BASE_IMAGE selects the foundation: point it at stock
 # onlyoffice/documentserver:9.4.0.1 or at the analytics-free image from this repo.
 #
 # Adapted from Benibur/cozy-drive deploy/integration/image/Dockerfile.
@@ -23,5 +23,6 @@ RUN dpkg-query -W -f='${Version}\n' onlyoffice-documentserver | grep -qx "${EXPE
 # lives only in sdk-all.js, so this single file carries the patch.
 COPY sdk-all.js /var/www/onlyoffice/documentserver/sdkjs/word/sdk-all.js
 
-# Scribe plugin (index.html is cache-bust-stamped by build-scribe.sh).
-COPY scribe/ /var/www/onlyoffice/documentserver/sdkjs-plugins/scribe/
+# Twake Scribe plugin, built from Twake Drive by build-scribe.sh. The Document
+# Server finds it in the folder alone, with no registration step.
+COPY twake-scribe/ /var/www/onlyoffice/documentserver/sdkjs-plugins/twake-scribe/

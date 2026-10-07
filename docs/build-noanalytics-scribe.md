@@ -34,12 +34,12 @@ such as `9.4.0-noanalytics-scribe-2026-07-22.3`) and the base tag to layer onto
 (defaults to `latest`, which `main` republishes on every merge). Use this when the
 overlay sources have moved but the base has not.
 
-> **Reproducibility.** Both overlay sources are now pinned to immutable tags
-> (`SDKJS_REF=scribe-sdkjs-2026-07-21.1`, `SCRIBE_REF=scribe-2026-07-22.3`), and
-> `build.py` is a deterministic concatenation, so rebuilding the same refs yields a
-> byte-identical `sdk-all.js` — `build-scribe.sh` prints its sha256 for comparison.
-> Keep it that way: a branch in `SDKJS_REF` would make two builds of the same
-> release tag differ.
+> **Reproducibility.** Both overlay sources are pinned to immutable refs
+> (`SDKJS_REF=scribe-sdkjs-2026-07-21.1`, `TWAKE_DRIVE_REF` a Twake Drive commit),
+> and `build.py` is a deterministic concatenation, so rebuilding the same refs
+> yields a byte-identical `sdk-all.js` — `build-scribe.sh` prints its sha256 for
+> comparison. Keep it that way: a branch in `SDKJS_REF` or `TWAKE_DRIVE_REF` would
+> make two builds of the same release tag differ.
 
 ## Building locally (debugging only)
 
@@ -64,8 +64,9 @@ BASE_IMAGE=harbor.linagora.com/twake-workplace/onlyoffice-noanalytics:latest \
 ```
 
 `scribe/build-scribe.sh` compiles `sdk-all.js` (Scribe patch + forms addon) from
-`Benibur/sdkjs` and adds the Scribe plugin. It **fails** if the patch, the forms API
-(`AscOForm`), or the base build version are not as expected.
+`Benibur/sdkjs` and builds the Twake Scribe plugin from Twake Drive. It **fails** if
+the patch, the forms API (`AscOForm`), the plugin, or the base build version are
+not as expected.
 
 ## Verify an image
 
@@ -80,7 +81,7 @@ printf '%s' "$SDK" | grep -c AscOForm                                 # 69  (for
 for ED in documenteditor spreadsheeteditor presentationeditor pdfeditor visioeditor; do
   echo -n "$ED trackEvent="; curl -s "localhost:8091/web-apps/apps/$ED/main/code.js" | grep -c trackEvent
 done                                                                  # all 0 (analytics removed)
-curl -s -o /dev/null -w "plugin %{http_code}\n" localhost:8091/sdkjs-plugins/scribe/index.html  # 200
+curl -s -o /dev/null -w "plugin %{http_code}\n" localhost:8091/sdkjs-plugins/twake-scribe/index.html  # 200
 ```
 
 All good when: `healthcheck=true`, `GetInlineDrawings=4`, `AscOForm=69`,

@@ -2,10 +2,10 @@
 # Build a multi-arch Scribe-patched OnlyOffice image.
 #
 # Assembles the overlay context — the patched sdkjs word bundle (sdk-all.js) plus
-# the Scribe plugin at a pinned git ref, with the plugin's index.html cache-bust
-# stamped — then hands it to ../dist/push-multiarch.sh, which builds amd64+arm64
-# and pushes a single multi-arch tag (resilient to harbor.linagora.com's upload
-# resets). The plugin and patch are version-locked to OnlyOffice build 9.4.0-129.
+# the Twake Scribe plugin of Twake Drive, built at a pinned git ref — then hands
+# it to ../dist/push-multiarch.sh, which builds amd64+arm64 and pushes a single
+# multi-arch tag (resilient to harbor.linagora.com's upload resets). The patch is
+# version-locked to OnlyOffice build 9.4.0-129.
 #
 # The BASE_IMAGE picks the foundation:
 #   • onlyoffice/documentserver:9.4.0.1                 -> stock + Scribe
@@ -17,7 +17,7 @@
 # Usage:
 #   IMAGE=<repo:tag> BASE_IMAGE=<oo-image> ./scribe/build-scribe.sh
 #
-# Overridable via env: SCRIBE_REF/SCRIBE_REPO (plugin git tag/repo),
+# Overridable via env: TWAKE_DRIVE_REF/TWAKE_DRIVE_REPO (plugin git ref/repo),
 # SDKJS_REF/SDKJS_REPO (patched sdkjs source tag/repo), FORMS_REF/FORMS_REPO
 # (sdkjs-forms addon), EXPECT_OO_VERSION.
 set -euo pipefail
@@ -26,8 +26,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 IMAGE="${IMAGE:?Set IMAGE, e.g. harbor.example.com/twake-workplace/onlyoffice:9.4.0.1-scribe-2026-07-22.3}"
 BASE_IMAGE="${BASE_IMAGE:?Set BASE_IMAGE, e.g. onlyoffice/documentserver:9.4.0.1}"
 
-SCRIBE_REPO="${SCRIBE_REPO:-https://github.com/Benibur/cozy-drive.git}"
-SCRIBE_REF="${SCRIBE_REF:-scribe-2026-07-22.3}"       # plugin git tag (== SCRIBE_BUILD)
+# The Twake Scribe plugin lives in Twake Drive (plugins/onlyoffice-scribe), which
+# builds it with its Markdown reader. A commit keeps a release reproducible; a
+# branch or a tag works too, for a test image.
+TWAKE_DRIVE_REPO="${TWAKE_DRIVE_REPO:-https://github.com/linagora/twake-drive.git}"
+TWAKE_DRIVE_REF="${TWAKE_DRIVE_REF:-cf4a3e18dc53d0eb1fe234fef718f403ff700790}"
+TWAKE_SCRIBE_GUID='asc.{E4B4F030-94E5-48BE-A962-A6E87CB6262B}'
 # Patched sdkjs source. sdk-all.js is compiled from it (via scribe/sdkjs.Dockerfile.build),
 # not fetched prebuilt. Any compatible sdkjs source tree works, so no Dockerfile is
 # required in the source repo.
@@ -69,18 +73,32 @@ echo "sdk-all.js OK ($(wc -c <"$CTX/sdk-all.js") bytes; patches + forms present,
 # reproducible: same SDKJS_REF + FORMS_REF -> same bytes).
 echo "sdk-all.js sha256 $(sha256sum "$CTX/sdk-all.js" | cut -d' ' -f1)"
 
-# 2. Scribe plugin at the pinned ref -> $CTX/scribe (drop stale pre-gzipped assets).
-git clone --depth 1 --branch "$SCRIBE_REF" --filter=blob:none --sparse "$SCRIBE_REPO" "$WORK/repo" >/dev/null 2>&1
-git -C "$WORK/repo" sparse-checkout set plugins/onlyoffice-scribe >/dev/null 2>&1
-cp -a "$WORK/repo/plugins/onlyoffice-scribe" "$CTX/scribe"
-find "$CTX/scribe" -name '*.gz' -delete 2>/dev/null || true
-
-# 3. Cache-bust stamp: index.html -> code.js?v=<SCRIBE_BUILD>, so browsers re-fetch
-#    on every plugin bump.
-BUILD_STR="$(grep -o 'SCRIBE_BUILD *= *"[^"]*"' "$CTX/scribe/scripts/code.js" | sed 's/.*= *"//; s/".*//' | head -1 || true)"
-TOKEN="$(printf '%s' "${BUILD_STR%% *}" | tr -c 'A-Za-z0-9._-' '-')"; [ -n "$TOKEN" ] || TOKEN="build"
-sed -i -E "s#(src=\"scripts/code\.js)(\?v=[^\"]*)?\"#\1?v=${TOKEN}\"#" "$CTX/scribe/index.html"
-echo "Scribe plugin $SCRIBE_REF, cache-bust ?v=${TOKEN}"
+# 2. Twake Scribe plugin at the pinned ref -> $CTX/twake-scribe. Twake Drive builds
+#    it with plugins/onlyoffice-scribe/build.mjs, which adds the Markdown reader it
+#    imports (marked): only marked is installed, at the version Twake Drive asks
+#    for, not the dependencies of the whole app. Node runs in Docker, as the sdkjs
+#    build does. The Document Server serves its plugins under a path that changes
+#    when it starts, so a new image needs no cache-bust stamp.
+git init -q "$WORK/drive"
+git -C "$WORK/drive" remote add origin "$TWAKE_DRIVE_REPO"
+git -C "$WORK/drive" sparse-checkout set plugins/onlyoffice-scribe
+git -C "$WORK/drive" fetch -q --depth 1 --filter=blob:none origin "$TWAKE_DRIVE_REF" \
+  || { echo "fetch of $TWAKE_DRIVE_REPO#$TWAKE_DRIVE_REF failed — is the ref pushed?" >&2; exit 1; }
+git -C "$WORK/drive" checkout -q FETCH_HEAD
+DRIVE_COMMIT="$(git -C "$WORK/drive" rev-parse --short=12 HEAD)"
+docker run --rm -v "$WORK/drive:/src" -w /src node:24-slim sh -euc '
+  npm install --silent --no-audit --no-fund --prefix /tmp/marked \
+    "marked@$(node -p "require(\"./package.json\").devDependencies.marked")"
+  ln -s /tmp/marked/node_modules node_modules
+  node plugins/onlyoffice-scribe/build.mjs
+  rm node_modules
+  chown -R "$(stat -c %u:%g /src)" plugins/onlyoffice-scribe/build'
+cp -a "$WORK/drive/plugins/onlyoffice-scribe/build" "$CTX/twake-scribe"
+grep -qF "$TWAKE_SCRIBE_GUID" "$CTX/twake-scribe/config.json" \
+  || { echo "twake-scribe/config.json is not the Twake Scribe plugin ($TWAKE_SCRIBE_GUID)" >&2; exit 1; }
+[ -s "$CTX/twake-scribe/vendor/marked.esm.js" ] \
+  || { echo "twake-scribe is missing its Markdown reader (vendor/marked.esm.js)" >&2; exit 1; }
+echo "Twake Scribe plugin $TWAKE_DRIVE_REF ($DRIVE_COMMIT)"
 
 # 4. Dockerfile + hand off to the shared multi-arch build/push engine.
 cp "$HERE/Dockerfile" "$CTX/Dockerfile"

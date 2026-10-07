@@ -5,7 +5,8 @@ published to Harbor under the `twake-workplace` project. Two independent overlay
 the official `onlyoffice/documentserver` image, composed into the shipped images:
 
 - **analytics-free**: Google Analytics tracking removed from the editors.
-- **Scribe**: the Scribe editor addon (patched `sdkjs` + plugin).
+- **Scribe**: the Scribe editor addon (patched `sdkjs` + the Twake Scribe plugin of
+  Twake Drive).
 
 | Image (tag) | Base | Analytics | Scribe |
 |-------------|------|-----------|--------|
@@ -30,9 +31,10 @@ customization is a thin **overlay** layered onto that image:
   landed three days after the 9.4.0 release, so it is not in the stock image. The
   overlay is pure JS/HTML, so it is architecture-independent (clean multi-arch, no
   emulation).
-- **Scribe** (`scribe/`): a patched `sdk-all.js` plus the `sdkjs-plugins/scribe`
-  addon, layered onto either the analytics-free image or stock 9.4.0.1. The patch
-  and plugin are version-locked to build `9.4.0-129` (a build guard enforces it).
+- **Scribe** (`scribe/`): a patched `sdk-all.js` plus the Twake Scribe plugin of
+  Twake Drive (`sdkjs-plugins/twake-scribe`), layered onto either the analytics-free
+  image or stock 9.4.0.1. The patch is version-locked to build `9.4.0-129` (a build
+  guard enforces it).
 
 ### Analytics scope
 
