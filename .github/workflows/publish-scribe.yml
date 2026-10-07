@@ -27,6 +27,10 @@ on:
         required: false
         default: latest
         type: string
+      twake_drive_ref:
+        description: 'Ref of linagora/twake-drive to build the Twake Scribe plugin from. Leave empty for the one pinned in build-scribe.sh.'
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       image_tag:
@@ -37,6 +41,10 @@ on:
         description: 'Tag of onlyoffice-noanalytics to layer onto'
         required: false
         default: latest
+        type: string
+      twake_drive_ref:
+        description: 'Ref of linagora/twake-drive to build the Twake Scribe plugin from (branch, tag or commit). Leave empty for the one pinned in build-scribe.sh.'
+        required: false
         type: string
 
 # A fixed prefix, not github.workflow: when this is called from another workflow,
@@ -90,11 +98,15 @@ jobs:
           username: ${{ secrets.HARBOR_USER }}
           password: ${{ secrets.HARBOR_PASSWORD }}
 
-      # build-scribe.sh compiles sdk-all.js from the pinned sdkjs source, assembles
-      # the plugin, and hands off to dist/push-multiarch.sh for the chunked push
-      # that Harbor's proxy requires.
+      # build-scribe.sh compiles sdk-all.js from the pinned sdkjs source, builds
+      # the Twake Scribe plugin from Twake Drive, and hands off to
+      # dist/push-multiarch.sh for the chunked push that Harbor's proxy requires.
       - name: Build and push Scribe overlay (multi-arch, chunked)
         env:
           IMAGE: ${{ secrets.HARBOR_REGISTRY }}/${{ secrets.HARBOR_PROJECT }}/onlyoffice:${{ steps.tags.outputs.image }}
           BASE_IMAGE: ${{ secrets.HARBOR_REGISTRY }}/${{ secrets.HARBOR_PROJECT }}/onlyoffice-noanalytics:${{ steps.tags.outputs.base }}
-        run: ./scribe/build-scribe.sh
+          TWAKE_DRIVE_REF_INPUT: ${{ inputs.twake_drive_ref }}
+        run: |
+          # An empty input keeps the ref pinned in build-scribe.sh
+          if [ -n "$TWAKE_DRIVE_REF_INPUT" ]; then export TWAKE_DRIVE_REF="$TWAKE_DRIVE_REF_INPUT"; fi
+          ./scribe/build-scribe.sh

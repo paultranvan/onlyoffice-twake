@@ -34,6 +34,10 @@ such as `9.4.0-noanalytics-scribe-2026-07-22.3`) and the base tag to layer onto
 (defaults to `latest`, which `main` republishes on every merge). Use this when the
 overlay sources have moved but the base has not.
 
+The workflow also takes a `twake_drive_ref`: the Twake Drive branch, tag or commit
+to build the plugin from, to publish a test image of a Twake Drive branch before it
+is merged. Leave it empty for the commit pinned in `build-scribe.sh`.
+
 > **Reproducibility.** Both overlay sources are pinned to immutable refs
 > (`SDKJS_REF=scribe-sdkjs-2026-07-21.1`, `TWAKE_DRIVE_REF` a Twake Drive commit),
 > and `build.py` is a deterministic concatenation, so rebuilding the same refs
